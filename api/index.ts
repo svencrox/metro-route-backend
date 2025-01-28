@@ -1,13 +1,15 @@
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request, Response } from "express";
 import bodyParser from "body-parser";
+import cors from "cors";
 
 const app = express();
+app.use(cors()); //enable cors support
+
+// middleware
+app.use(bodyParser.json()); // parse incoming JSON requests
 const port = 8000;
 
-// Middleware
-app.use(bodyParser.json());
-
-// Metro Data
+// data structure for metro data
 const metroLines: Record<string, string[]> = {
 	blue: [
 		"East End",
@@ -66,7 +68,8 @@ const metroLines: Record<string, string[]> = {
 	],
 };
 
-// Graph representation
+// data structure for graph representation
+// each station is mapped to its neighboring stations with their respective metro line
 type Neighbor = {
 	station: string;
 	line: string;
@@ -75,13 +78,14 @@ type Neighbor = {
 const graph: Record<string, Neighbor[]> = {};
 const allStations = new Set<string>();
 
-// Populate graph
+// populate graph with connections based on metro lines
 Object.entries(metroLines).forEach(([line, stations]) => {
 	stations.forEach((station, index) => {
-		allStations.add(station);
+		allStations.add(station); // add station to all stations
 		if (!graph[station]) {
-			graph[station] = [];
+			graph[station] = []; // init neighbors list if not already present
 		}
+		// add neighbors for bidirectional connections
 		if (index > 0) {
 			graph[station].push({ station: stations[index - 1], line });
 		}
@@ -90,9 +94,10 @@ Object.entries(metroLines).forEach(([line, stations]) => {
 		}
 	});
 });
-console.log(`Total unique stations: ${allStations.size}`);
 
-// Types for Dijkstra's function
+// types for dijkstra's function
+// PathSegment represents a part of the journey
+// RouteResult represents the full journey's details
 type PathSegment = {
 	station: string;
 	line: string;
@@ -101,13 +106,13 @@ type PathSegment = {
 
 type RouteResult = {
 	path: PathSegment[];
-	time: number;
-	cost: number;
+	time: number; // total travel time in minutes
+	cost: number; // total cost for station change and line change
 };
 
 // dijkstra's algorithm to find the shortest path
 const dijkstra = (start: string, end: string): RouteResult | null => {
-	const distances: Record<string, number> = {};
+	const distances: Record<string, number> = {}; // stores shortest distance
 	const previous: Record<string, { station: string; line: string } | null> =
 		{};
 	const visited = new Set<string>();
@@ -196,7 +201,6 @@ const dijkstra = (start: string, end: string): RouteResult | null => {
 // API endpoint
 app.post("/calculate-route", (req: Request, res: Response) => {
 	const { start, end } = req.body as { start: string; end: string };
-	console.log("params entered: " + start + " " + end);
 
 	// validate input parameters
 	if (!start || !end) {
@@ -211,7 +215,6 @@ app.post("/calculate-route", (req: Request, res: Response) => {
 	}
 
 	// for same station case
-	console.time("validating for same station case");
 	if (start === end) {
 		return res.json({
 			path: [start],
@@ -220,11 +223,8 @@ app.post("/calculate-route", (req: Request, res: Response) => {
 			message: "You are already at your destination!",
 		});
 	}
-	console.timeEnd("validating for same station case");
 
-	console.time("Route Calculation");
 	const result = dijkstra(start, end);
-	console.timeEnd("Route Calculation");
 
 	if (result) {
 		return res.json(result);
